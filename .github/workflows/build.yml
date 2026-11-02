@@ -1,0 +1,35 @@
+name: build
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3cd274f866b71ec15e4f7d8c796514b0baa8033c
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build
+        working-directory: launcher
+        run: |
+          chmod +x gradlew
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          ./gradlew assembleRelease --console=plain
+      - name: Sign if needed
+        run: |
+          APK=$(find launcher/app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "found $APK"
+          cp "$APK" out.apk
+          BT=$(ls -d $ANDROID_HOME/build-tools/34* | tail -1)
+          if ! $BT/apksigner verify out.apk 2>/dev/null; then
+            keytool -genkeypair -keystore k.jks -alias k -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=tv"
+            $BT/zipalign -f 4 out.apk aligned.apk
+            $BT/apksigner sign --ks k.jks --ks-pass pass:android --key-pass pass:android --out signed.apk aligned.apk
+            cp signed.apk out.apk
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-apk
+          path: out.apk
